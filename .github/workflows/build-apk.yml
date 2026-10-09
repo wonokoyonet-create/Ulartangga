@@ -1,58 +1,58 @@
 name: Build Android APK
 
 'on':
-workflow_dispatch:
-push:
-branches:
-- main
+  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
-contents: read
+  contents: read
 
 jobs:
-build:
-runs-on: ubuntu-latest
-steps:
-- name: Checkout source
-uses: actions/checkout@v4
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-  - name: Set up Java
-    uses: actions/setup-java@v4
-    with:
-      distribution: temurin
-      java-version: '17'
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+        distribution: temurin
+        java-version: '17'
 
-  - name: Set up Gradle
-    uses: gradle/actions/setup-gradle@v4
-    with:
-      gradle-version: '8.9'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+        gradle-version: '8.9'
 
-  - name: Set up Android SDK
-    uses: android-actions/setup-android@v3
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-  - name: Extract project
-    run: unzip -q UlarTanggaPasutri-Android-Project.zip -d extracted
+      - name: Extract project
+        run: unzip -q UlarTanggaPasutri-Android-Project.zip -d extracted
 
-  - name: Inspect project structure
-    run: |
-      find extracted -maxdepth 5 -type f | head -100
-      find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \)
+      - name: Inspect project structure
+        run: |
+         find extracted -maxdepth 5 -type f | head -100
+         find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \)
 
-  - name: Build APK
-    shell: bash
-    run: |
-      SETTINGS_FILE="$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
-      if [ -z "$SETTINGS_FILE" ]; then
-        echo "ERROR: Gradle settings file not found in ZIP"
-        exit 1
-      fi
-      PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
-      gradle -p "$PROJECT_DIR" assembleDebug
+      - name: Build APK
+        shell: bash
+        run: |
+         SETTINGS_FILE="$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+         if [ -z "$SETTINGS_FILE" ]; then
+         echo "ERROR: Gradle settings file not found in ZIP"
+         exit 1
+         fi
+         PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
+         gradle -p "$PROJECT_DIR" assembleDebug
 
-  - name: Upload APK
-    uses: actions/upload-artifact@v4
-    with:
-      name: UlarTanggaPasutri-APK
-      path: extracted/**/build/outputs/apk/debug/*.apk
-      if-no-files-found: error
-      retention-days: 7
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+        name: UlarTanggaPasutri-APK
+        path: extracted/**/build/outputs/apk/debug/*.apk
+        if-no-files-found: error
+        retention-days: 7
