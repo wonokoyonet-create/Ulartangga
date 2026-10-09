@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout source
@@ -22,11 +23,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: ''
 
       - name: Install Android SDK packages
         shell: bash
@@ -34,7 +34,7 @@ jobs:
           set -euo pipefail
 
           sdkmanager --version
-          yes | sdkmanager --licenses
+          sdkmanager --licenses </dev/null || true
 
           sdkmanager \
             "platform-tools" \
@@ -49,8 +49,7 @@ jobs:
           ZIP_FILE="UlarTanggaPasutri-Android-Project.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: ZIP project not found: $ZIP_FILE"
-            echo "Files in repository:"
+            echo "ERROR: ZIP proyek tidak ditemukan."
             ls -la
             exit 1
           fi
@@ -58,91 +57,82 @@ jobs:
           mkdir -p extracted
           unzip -q "$ZIP_FILE" -d extracted
 
-          echo "Project extracted successfully."
+          echo "=== Struktur proyek ==="
+          find extracted -maxdepth 4 -type f \
+            \( -name "settings.gradle" \
+            -o -name "settings.gradle.kts" \
+            -o -name "build.gradle" \
+            -o -name "build.gradle.kts" \
+            -o -name "gradlew" \) -print
 
-      - name: Inspect project structure
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "=== Gradle settings ==="
-          find extracted -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print
-
-          echo "=== Gradle build files ==="
-          find extracted -type f \
-            \( -name build.gradle -o -name build.gradle.kts \) \
-            -print
-
-          echo "=== Gradle wrappers ==="
-          find extracted -type f \
-            \( -name gradlew -o -name gradlew.bat \) \
-            -print
-
-      - name: Build APK
+      - name: Locate Gradle project
+        id: project
         shell: bash
         run: |
           set -euo pipefail
 
           SETTINGS_FILE="$(
             find extracted -type f \
-              \( -name settings.gradle -o -name settings.gradle.kts \) \
+              \( -name "settings.gradle" \
+              -o -name "settings.gradle.kts" \) \
               -print -quit
           )"
 
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "ERROR: settings.gradle or settings.gradle.kts not found."
-            echo "The ZIP may not contain a valid Gradle project."
+            echo "ERROR: settings.gradle tidak ditemukan."
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
 
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
           echo "Project directory: $PROJECT_DIR"
+
+      - name: Build APK
+        shell: bash
+        env:
+          PROJECT_DIR: ${{ steps.project.outputs.dir }}
+        run: |
+          set -euo pipefail
+
           cd "$PROJECT_DIR"
 
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
-            ./gradlew assembleDebug --stacktrace
-
-          elif [ -f "./gradlew.bat" ]; then
-            echo "ERROR: Only Windows Gradle wrapper found."
-            echo "A Linux Gradle wrapper is required on Ubuntu."
-            exit 1
+            ./gradlew --no-daemon assembleDebug --stacktrace
 
           elif [ -f "./build.gradle" ] || \
                [ -f "./build.gradle.kts" ]; then
-            echo "Gradle wrapper missing. Checking installed Gradle..."
-            gradle --version
-            gradle assembleDebug --stacktrace
+            gradle --no-daemon assembleDebug --stacktrace
 
           else
-            echo "ERROR: No Gradle wrapper or root build.gradle found."
-            ls -la
+            echo "ERROR: File build.gradle tidak ditemukan."
             exit 1
           fi
-
-          echo "APK build command completed."
 
       - name: Verify APK
         shell: bash
+        env:
+          PROJECT_DIR: ${{ steps.project.outputs.dir }}
         run: |
           set -euo pipefail
 
-          APK_COUNT="$(
-            find extracted -type f -path '*/build/outputs/apk/debug/*.apk' \
-              | wc -l
-          )"
+          APK_DIR="$PROJECT_DIR/build/outputs/apk/debug"
 
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: No debug APK found."
+          if [ ! -d "$APK_DIR" ]; then
+            echo "ERROR: Direktori APK tidak ditemukan."
+            find "$PROJECT_DIR" -type f -name "*.apk" -print
             exit 1
           fi
 
-          echo "Found $APK_COUNT APK file(s):"
-          find extracted -type f \
-            -path '*/build/outputs/apk/debug/*.apk' -print
+          find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" \
+            -print -quit | grep -q . || {
+              echo "ERROR: APK tidak berhasil dibuat."
+              exit 1
+            }
+
+          echo "APK berhasil dibuat:"
+          find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
