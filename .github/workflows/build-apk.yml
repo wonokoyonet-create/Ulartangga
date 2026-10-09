@@ -25,15 +25,18 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
       - name: Install Android SDK packages
         run: |
+          sdkmanager --version
           yes | sdkmanager --licenses
-          sdkmanager --install \
+          sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
-
+            
       - name: Extract project
         run: unzip -q UlarTanggaPasutri-Android-Project.zip -d extracted
 
