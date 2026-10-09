@@ -29,38 +29,120 @@ jobs:
           packages: ''
 
       - name: Install Android SDK packages
+        shell: bash
         run: |
+          set -euo pipefail
+
           sdkmanager --version
           yes | sdkmanager --licenses
+
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
-            
-      - name: Extract project
-        run: unzip -q UlarTanggaPasutri-Android-Project.zip -d extracted
+
+      - name: Extract Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP_FILE="UlarTanggaPasutri-Android-Project.zip"
+
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP project not found: $ZIP_FILE"
+            echo "Files in repository:"
+            ls -la
+            exit 1
+          fi
+
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+
+          echo "Project extracted successfully."
 
       - name: Inspect project structure
+        shell: bash
         run: |
-          find extracted -maxdepth 5 -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \)
+          set -euo pipefail
+
+          echo "=== Gradle settings ==="
+          find extracted -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print
+
+          echo "=== Gradle build files ==="
+          find extracted -type f \
+            \( -name build.gradle -o -name build.gradle.kts \) \
+            -print
+
+          echo "=== Gradle wrappers ==="
+          find extracted -type f \
+            \( -name gradlew -o -name gradlew.bat \) \
+            -print
 
       - name: Build APK
         shell: bash
         run: |
-          SETTINGS_FILE="$(find extracted -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print -quit)"
+          set -euo pipefail
+
+          SETTINGS_FILE="$(
+            find extracted -type f \
+              \( -name settings.gradle -o -name settings.gradle.kts \) \
+              -print -quit
+          )"
 
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "ERROR: Gradle settings file not found in ZIP"
+            echo "ERROR: settings.gradle or settings.gradle.kts not found."
+            echo "The ZIP may not contain a valid Gradle project."
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
+
+          echo "Project directory: $PROJECT_DIR"
           cd "$PROJECT_DIR"
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace
+
+          elif [ -f "./gradlew.bat" ]; then
+            echo "ERROR: Only Windows Gradle wrapper found."
+            echo "A Linux Gradle wrapper is required on Ubuntu."
+            exit 1
+
+          elif [ -f "./build.gradle" ] || \
+               [ -f "./build.gradle.kts" ]; then
+            echo "Gradle wrapper missing. Checking installed Gradle..."
+            gradle --version
+            gradle assembleDebug --stacktrace
+
+          else
+            echo "ERROR: No Gradle wrapper or root build.gradle found."
+            ls -la
+            exit 1
+          fi
+
+          echo "APK build command completed."
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK_COUNT="$(
+            find extracted -type f -path '*/build/outputs/apk/debug/*.apk' \
+              | wc -l
+          )"
+
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No debug APK found."
+            exit 1
+          fi
+
+          echo "Found $APK_COUNT APK file(s):"
+          find extracted -type f \
+            -path '*/build/outputs/apk/debug/*.apk' -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
